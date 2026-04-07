@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>招聘决策诊断小工具 MVP</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>招聘决策诊断小工具（MVP）</h1>
+      <p class="subtitle">把“找人冲动”转化为一次结构化用人决策对话。</p>
+
+      <label for="problemInput">请输入你的业务问题</label>
+      <textarea id="problemInput" rows="6" placeholder="例如：订单增长但交付跟不上，老板很多事情没人接。"></textarea>
+
+      <button id="diagnoseBtn">开始诊断</button>
+
+      <section id="resultCard" class="result-card hidden">
+        <h2>诊断结果</h2>
+        <pre id="resultJson"></pre>
+      </section>
+    </main>
+
+    <script>
+      const btn = document.getElementById("diagnoseBtn");
+      const input = document.getElementById("problemInput");
+      const resultCard = document.getElementById("resultCard");
+      const resultJson = document.getElementById("resultJson");
+
+      btn.addEventListener("click", async () => {
+        const problem = input.value.trim();
+
+        const response = await fetch("/api/diagnose", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ problem }),
+        });
+
+        const data = await response.json();
+        resultJson.textContent = JSON.stringify(data, null, 2);
+        resultCard.classList.remove("hidden");
+      });
+    </script>
+  </body>
+</html>
