@@ -1,153 +1,112 @@
-"""规则引擎：用于判断“是否应该先招聘”。
-
-第一版采用关键词 + 权重 的可解释规则，
-后续可以替换成更复杂的策略（例如模型评分），
-但对外保持 diagnose(text) 接口不变。
-"""
-
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict
 
 
-@dataclass
-class RuleConfig:
-    """单类规则配置。"""
-
-    category: str
-    essence: str
-    hire_recommendation: str
-    reason_template: str
-    advice: List[str]
-    keywords: List[str]
-
-
-RULES: Dict[str, RuleConfig] = {
-    "hiring": RuleConfig(
-        category="招聘问题",
-        essence="当前问题更像“职责缺口/承接缺口”，存在真实人力缺位。",
-        hire_recommendation="建议",
-        reason_template="识别到职责缺失或新增业务无人承接信号：{hits}",
-        advice=[
-            "先明确该岗位的结果责任与边界，再启动招聘。",
-            "把“必须新增”的工作与“可优化/可外包”的工作拆开。",
-            "设定30-60-90天目标，避免“招了但没人管”。",
-        ],
-        keywords=["没人", "无人", "缺人", "新增业务", "没人接", "负责人", "承接", "空缺", "招人"],
-    ),
-    "organization": RuleConfig(
-        category="组织结构问题",
-        essence="当前问题更像组织分工与结构设计失衡，而非单纯人手不足。",
-        hire_recommendation="不建议",
-        reason_template="识别到组织冗余/分工混乱信号：{hits}",
-        advice=[
-            "先梳理组织层级与汇报关系，减少重叠岗位。",
-            "明确每个团队的唯一责任目标，避免多人对同一结果负责。",
-            "在组织边界清晰后，再评估是否补充关键岗位。",
-        ],
-        keywords=["组织冗余", "架构混乱", "分工混乱", "重叠", "重复", "职责不清", "层级过多"],
-    ),
-    "process": RuleConfig(
-        category="流程问题",
-        essence="当前问题更像流程效率瓶颈，新增人员未必能解决核心约束。",
-        hire_recommendation="不建议",
-        reason_template="识别到流程低效/交付卡点信号：{hits}",
-        advice=[
-            "先定位关键流程瓶颈（例如审批、交付、跨部门协同）。",
-            "建立SOP与节奏看板，先提升单人产能。",
-            "若流程优化后仍存在稳定产能缺口，再考虑招聘。",
-        ],
-        keywords=["流程", "低效", "交付跟不上", "审批慢", "卡点", "协同低效", "扯皮"],
-    ),
-    "role_design": RuleConfig(
-        category="角色设计问题",
-        essence="当前问题更像角色定义不清或岗位设计失衡。",
-        hire_recommendation="暂不确定",
-        reason_template="识别到角色边界不清信号：{hits}",
-        advice=[
-            "先定义关键角色的职责边界、决策权与协作接口。",
-            "把“岗位名”改成“结果责任”，再判断是否缺编。",
-            "必要时先试行代理负责人机制，验证岗位必要性。",
-        ],
-        keywords=["角色不清", "岗位不清", "定位不清", "没人负责", "职责边界", "负责什么"],
-    ),
-    "management": RuleConfig(
-        category="管理能力问题",
-        essence="当前问题更像管理动作不到位，直接加人可能放大低效。",
-        hire_recommendation="不建议",
-        reason_template="识别到执行力/管理机制不足信号：{hits}",
-        advice=[
-            "先建立目标拆解、过程复盘和责任追踪机制。",
-            "补齐中层管理动作：周节奏、复盘、跨部门对齐。",
-            "管理机制稳定后再判断是否需要增员。",
-        ],
-        keywords=["执行差", "推不动", "管理不到位", "协同弱", "中层无力", "老板太累", "没人盯"],
-    ),
-}
+def _normalize_text(data: Dict[str, str]) -> str:
+    parts = [
+        data.get("company_stage", ""),
+        data.get("team_size", ""),
+        data.get("current_problem", ""),
+        data.get("hiring_reason", ""),
+        data.get("q1_owner", ""),
+        data.get("q2_timeline", ""),
+        data.get("q3_alternative", ""),
+    ]
+    return " ".join(str(p).strip().lower() for p in parts if str(p).strip())
 
 
-def _count_hits(text: str, keywords: List[str]) -> Tuple[int, List[str]]:
-    """统计命中关键词数量。"""
+def diagnose(data: dict) -> dict:
+    text = _normalize_text(data)
+    problem = str(data.get("current_problem", "")).strip()
+    reason = str(data.get("hiring_reason", "")).strip()
+    owner_answer = str(data.get("q1_owner", "")).strip()
+    timeline_answer = str(data.get("q2_timeline", "")).strip()
+    alternative_answer = str(data.get("q3_alternative", "")).strip()
 
-    hits = [kw for kw in keywords if kw in text]
-    return len(hits), hits
+    has_org_signal = (
+        "职责不清" in text
+        or "分工混乱" in text
+        or "边界不清" in text
+        or "重复" in text
+    )
+    has_gap_signal = (
+        "没人负责" in text
+        or "没人做" in text
+        or "无人承接" in text
+        or "空缺" in text
+    )
+    has_management_signal = (
+        "老板很累" in text
+        or "推不动" in text
+        or "没人推进" in text
+        or "管理" in text and "跟不上" in text
+    )
 
+    if has_org_signal:
+        essence = "更可能是组织分工问题，而不是单纯缺人。"
+        why_like_hiring = (
+            f"你提到“{problem or '当前问题'}”与“{reason or '招聘动机'}”，"
+            "看起来像人手不足，但信号更偏向职责边界和协作关系未理顺。"
+        )
+    elif has_management_signal:
+        essence = "更可能是管理机制问题，直接招人可能放大低效。"
+        why_like_hiring = (
+            f"你提到“{problem or '当前问题'}”，同时出现推进乏力或管理承压迹象，"
+            "因此容易把管理压力误判为编制不足。"
+        )
+    elif has_gap_signal or ("没有" in owner_answer and "负责人" in owner_answer):
+        essence = "更可能存在职责缺口，确实有新增承接位的可能。"
+        why_like_hiring = (
+            f"你给出的场景“{problem or '当前问题'}”与“{reason or '招聘动机'}”显示已有事项无人稳定负责，"
+            "因此会出现明显“缺人感”。"
+        )
+    else:
+        essence = "当前信息显示是“人、流程、职责”混合问题，不能只按缺人处理。"
+        why_like_hiring = (
+            f"你提到“{reason or '需要招人'}”，但追问信息尚未形成单一根因，"
+            "因此看起来像缺人，实则可能是多因素叠加。"
+        )
 
-def diagnose(problem_text: str) -> Dict[str, object]:
-    """根据输入文本进行规则诊断。"""
+    hiring_condition = "当问题是长期且持续增长、且目前明确无人稳定承接关键结果时。"
+    if "短期" in timeline_answer:
+        hiring_risk = "你已提示是短期问题，若立即正式招聘，可能造成固定成本和人岗错配风险。"
+    else:
+        hiring_risk = "若目标和职责边界不清，招到人后仍可能出现“有人但问题没解”的风险。"
 
-    cleaned = (problem_text or "").strip()
-    if len(cleaned) < 6:
-        return {
-            "问题本质": "输入信息过少，暂时无法判断是否属于招聘问题。",
-            "是否建议招聘": "暂不确定",
-            "问题类型": "信息不足",
-            "判断理由": ["描述字数过少，缺乏场景、对象和结果信息。"],
-            "建议": [
-                "补充现象：发生在什么业务环节。",
-                "补充影响：对收入、成本、交付或团队的影响。",
-                "补充责任：当前由谁负责、卡在哪里。",
-            ],
-        }
+    internal_condition = "当团队内有可重排工作、可明确责任人，且问题可通过节奏和分工优化改善时。"
+    internal_risk = "若只调整分工但不给权限与考核，容易变成“名义负责、实际无人负责”。"
 
-    score_board = {}
-    hit_board = {}
+    outsource_condition = "当需求阶段性波动、专业能力短期缺口明显，且可被清晰拆分成交付任务时。"
+    if "没有" in alternative_answer or "不可能" in alternative_answer:
+        outsource_risk = "你目前认为替代方案空间有限，若强行外包可能增加沟通和质量返工成本。"
+    else:
+        outsource_risk = "外包能缓冲压力，但若验收标准不清，容易形成进度和质量失控。"
 
-    # 遍历所有类别进行关键词命中打分。
-    for key, cfg in RULES.items():
-        score, hits = _count_hits(cleaned, cfg.keywords)
-        score_board[key] = score
-        hit_board[key] = hits
-
-    best_category, best_score = max(score_board.items(), key=lambda item: item[1])
-
-    # 当所有命中都为0，或者存在明显并列，返回“信息不足/暂不确定”。
-    sorted_scores = sorted(score_board.values(), reverse=True)
-    if best_score == 0 or (len(sorted_scores) > 1 and sorted_scores[0] == sorted_scores[1]):
-        return {
-            "问题本质": "当前描述可指向多种管理问题，暂时无法定位单一根因。",
-            "是否建议招聘": "暂不确定",
-            "问题类型": "信息不足",
-            "判断理由": [
-                "关键词信号不足或存在并列，无法形成稳定判断。",
-                "建议补充“具体场景 + 当前负责人 + 已尝试动作”。",
-            ],
-            "建议": [
-                "先用一周记录法梳理问题出现频次与环节。",
-                "补充一条“如果不解决，会损失什么”的业务描述。",
-                "补充当前团队分工图，再次诊断。",
-            ],
-        }
-
-    cfg = RULES[best_category]
-    hits_text = "、".join(hit_board[best_category])
+    if has_gap_signal and "长期" in timeline_answer:
+        priority_action = "先定义该岗位的结果责任与90天目标，再小范围启动招聘验证。"
+    elif has_org_signal or has_management_signal:
+        priority_action = "先做一次职责与推进机制梳理，用两周验证内部调整效果，再决定是否招聘。"
+    else:
+        priority_action = "先把问题拆成“必须新增”与“可替代处理”两类，再按轻重缓急组合动作。"
 
     return {
-        "问题本质": cfg.essence,
-        "是否建议招聘": cfg.hire_recommendation,
-        "问题类型": cfg.category,
-        "判断理由": [
-            cfg.reason_template.format(hits=hits_text),
-            "该结论来自可解释规则引擎（关键词命中与类别得分）。",
+        "problem_essence": essence,
+        "why_feels_like_hiring": why_like_hiring,
+        "paths": [
+            {
+                "name": "招聘",
+                "condition": hiring_condition,
+                "risk": hiring_risk,
+            },
+            {
+                "name": "内部调整",
+                "condition": internal_condition,
+                "risk": internal_risk,
+            },
+            {
+                "name": "外包/临时方案",
+                "condition": outsource_condition,
+                "risk": outsource_risk,
+            },
         ],
-        "建议": cfg.advice,
+        "priority_action": priority_action,
     }

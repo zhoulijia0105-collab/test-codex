@@ -4,22 +4,38 @@ from rules import diagnose
 
 app = Flask(__name__)
 
+FOLLOW_UP_QUESTIONS = [
+    "这个问题目前是否有明确负责人？",
+    "这个岗位要解决的是长期问题还是短期问题？",
+    "如果不招人，有没有内部调整或外包的可能？",
+]
+
 
 @app.route("/")
 def index():
-    """首页：输入业务问题并查看诊断结果。"""
     return render_template("index.html")
+
+
+@app.route("/api/start", methods=["POST"])
+def api_start():
+    payload = request.get_json(silent=True) or {}
+    return jsonify(
+        {
+            "message": "已进入诊断追问阶段。",
+            "questions": FOLLOW_UP_QUESTIONS,
+            "context": {
+                "company_stage": payload.get("company_stage", ""),
+                "team_size": payload.get("team_size", ""),
+            },
+        }
+    )
 
 
 @app.route("/api/diagnose", methods=["POST"])
 def api_diagnose():
-    """诊断 API：接收文本，返回结构化判断。"""
     payload = request.get_json(silent=True) or {}
-    problem_text = payload.get("problem", "")
-    result = diagnose(problem_text)
-    return jsonify(result)
+    return jsonify(diagnose(payload))
 
 
 if __name__ == "__main__":
-    # 本地启动：python app/main.py
     app.run(host="127.0.0.1", port=5000, debug=True)
