@@ -3,43 +3,153 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>招聘决策诊断小工具 MVP</title>
+    <title>招聘决策诊断</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <main class="container">
-      <h1>招聘决策诊断小工具（MVP）</h1>
-      <p class="subtitle">把“找人冲动”转化为一次结构化用人决策对话。</p>
+    <main class="page">
+      <section class="card">
+        <h1>招聘决策诊断（MVP）</h1>
 
-      <label for="problemInput">请输入你的业务问题</label>
-      <textarea id="problemInput" rows="6" placeholder="例如：订单增长但交付跟不上，老板很多事情没人接。"></textarea>
+        <div class="section" id="baseSection">
+          <h2>1. 基本信息输入</h2>
+          <label>公司阶段</label>
+          <input id="companyStage" type="text" placeholder="例如：A轮后快速增长期" />
 
-      <button id="diagnoseBtn">开始诊断</button>
+          <label>团队规模</label>
+          <input id="teamSize" type="text" placeholder="例如：28人" />
 
-      <section id="resultCard" class="result-card hidden">
-        <h2>诊断结果</h2>
-        <pre id="resultJson"></pre>
+          <label>当前最想解决的问题</label>
+          <textarea id="currentProblem" rows="4"></textarea>
+
+          <label>为什么觉得需要招人</label>
+          <textarea id="hiringReason" rows="4"></textarea>
+
+          <button id="startBtn">开始诊断</button>
+        </div>
+
+        <div class="section hidden" id="followupSection">
+          <h2>2. 系统追问</h2>
+          <label id="q1Label"></label>
+          <input id="q1Input" type="text" />
+
+          <label id="q2Label"></label>
+          <input id="q2Input" type="text" />
+
+          <label id="q3Label"></label>
+          <input id="q3Input" type="text" />
+
+          <button id="diagnoseBtn">生成诊断结果</button>
+        </div>
+
+        <div class="section hidden" id="resultSection">
+          <h2>3. 诊断结果</h2>
+
+          <div class="result-block">
+            <h3>问题本质</h3>
+            <p id="problemEssence"></p>
+          </div>
+
+          <div class="result-block">
+            <h3>你当前看起来像“缺人”的原因</h3>
+            <p id="whyFeelsLikeHiring"></p>
+          </div>
+
+          <div class="result-block">
+            <h3>可选解决路径</h3>
+            <div class="path-item">
+              <h4>1. 招聘</h4>
+              <p><strong>适用条件：</strong><span id="path1Condition"></span></p>
+              <p><strong>风险提示：</strong><span id="path1Risk"></span></p>
+            </div>
+            <div class="path-item">
+              <h4>2. 内部调整</h4>
+              <p><strong>适用条件：</strong><span id="path2Condition"></span></p>
+              <p><strong>风险提示：</strong><span id="path2Risk"></span></p>
+            </div>
+            <div class="path-item">
+              <h4>3. 外包/临时方案</h4>
+              <p><strong>适用条件：</strong><span id="path3Condition"></span></p>
+              <p><strong>风险提示：</strong><span id="path3Risk"></span></p>
+            </div>
+          </div>
+
+          <div class="result-block">
+            <h3>建议优先动作</h3>
+            <p id="priorityAction"></p>
+          </div>
+        </div>
       </section>
     </main>
 
     <script>
-      const btn = document.getElementById("diagnoseBtn");
-      const input = document.getElementById("problemInput");
-      const resultCard = document.getElementById("resultCard");
-      const resultJson = document.getElementById("resultJson");
+      const startBtn = document.getElementById("startBtn");
+      const diagnoseBtn = document.getElementById("diagnoseBtn");
 
-      btn.addEventListener("click", async () => {
-        const problem = input.value.trim();
+      const followupSection = document.getElementById("followupSection");
+      const resultSection = document.getElementById("resultSection");
+
+      const state = {
+        questions: [],
+      };
+
+      startBtn.addEventListener("click", async () => {
+        const payload = {
+          company_stage: document.getElementById("companyStage").value.trim(),
+          team_size: document.getElementById("teamSize").value.trim(),
+          current_problem: document.getElementById("currentProblem").value.trim(),
+          hiring_reason: document.getElementById("hiringReason").value.trim(),
+        };
+
+        const response = await fetch("/api/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+        state.questions = data.questions || [];
+
+        document.getElementById("q1Label").textContent = state.questions[0] || "问题1";
+        document.getElementById("q2Label").textContent = state.questions[1] || "问题2";
+        document.getElementById("q3Label").textContent = state.questions[2] || "问题3";
+
+        followupSection.classList.remove("hidden");
+        resultSection.classList.add("hidden");
+      });
+
+      diagnoseBtn.addEventListener("click", async () => {
+        const payload = {
+          company_stage: document.getElementById("companyStage").value.trim(),
+          team_size: document.getElementById("teamSize").value.trim(),
+          current_problem: document.getElementById("currentProblem").value.trim(),
+          hiring_reason: document.getElementById("hiringReason").value.trim(),
+          q1_owner: document.getElementById("q1Input").value.trim(),
+          q2_timeline: document.getElementById("q2Input").value.trim(),
+          q3_alternative: document.getElementById("q3Input").value.trim(),
+        };
 
         const response = await fetch("/api/diagnose", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ problem }),
+          body: JSON.stringify(payload),
         });
 
         const data = await response.json();
-        resultJson.textContent = JSON.stringify(data, null, 2);
-        resultCard.classList.remove("hidden");
+
+        document.getElementById("problemEssence").textContent = data.problem_essence || "";
+        document.getElementById("whyFeelsLikeHiring").textContent = data.why_feels_like_hiring || "";
+        document.getElementById("priorityAction").textContent = data.priority_action || "";
+
+        const paths = data.paths || [];
+        document.getElementById("path1Condition").textContent = paths[0]?.condition || "";
+        document.getElementById("path1Risk").textContent = paths[0]?.risk || "";
+        document.getElementById("path2Condition").textContent = paths[1]?.condition || "";
+        document.getElementById("path2Risk").textContent = paths[1]?.risk || "";
+        document.getElementById("path3Condition").textContent = paths[2]?.condition || "";
+        document.getElementById("path3Risk").textContent = paths[2]?.risk || "";
+
+        resultSection.classList.remove("hidden");
       });
     </script>
   </body>
