@@ -254,6 +254,10 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
     )
     team_stage, team_reason = _team_context(team_size)
 
+    if industry_gap and not capability_problem:
+        capability_problem = True
+        capability_reason = "能力信号补充：出现行业能力断层，按能力缺口处理。"
+
     if stage_problem:
         needs_hiring = False
         judgment = "当前问题不在于缺人，而在于尚未打通行业进入路径。"
