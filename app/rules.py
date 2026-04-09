@@ -49,9 +49,15 @@ def _responsibility_status(owner_answer: str, root_answer: str) -> Tuple[bool, s
         token in merged
         for token in ["没人负责", "没有负责人", "责任不清", "职责不清", "都在负责", "老板自己盯", "扯皮"]
     )
+    capability_weak_signal = any(
+        token in root_text
+        for token in ["不会做", "做不来", "力不从心", "在摸索", "不懂行业", "缺经验", "能力不足"]
+    )
 
     if no_owner_signal and not has_owner_signal:
         return True, "责任信号显示结果没有稳定负责人，责任链路未闭环。"
+    if has_owner_signal and capability_weak_signal:
+        return False, "责任归属明确，但负责人能力不足，问题应归入能力缺口。"
     if has_owner_signal and not no_owner_signal:
         return False, "责任信号显示已有明确负责人。"
     return True, "责任描述存在冲突或模糊，按“责任未闭环”处理更安全。"
@@ -170,13 +176,20 @@ def _build_task_brief(
     capability_problem: bool,
     industry_gap: bool,
     role_definition_problem: bool,
+    owner_clear_capability_gap: bool,
     recruitable_parts: List[str],
     non_recruitable_parts: List[str],
 ) -> Dict[str, object]:
     core_problem = problem or "当前关键结果无人稳定达成"
     core_goal = goal or "90天内把关键结果拉到可复盘、可持续的稳定状态"
 
-    if role_definition_problem:
+    if owner_clear_capability_gap:
+        key_capabilities = [
+            "在目标市场具备实战开拓经验，能快速识别并推进关键合作机会。",
+            "熟悉行业决策链路与成交路径，能把机会转化为可落地订单。",
+            "具备资源突破与关系推动能力，能在复杂场景中打开局面。",
+        ]
+    elif role_definition_problem:
         key_capabilities = [
             "能围绕单一核心结果快速落地（如渠道拓展或销售转化）。",
             "在高节奏环境下稳定执行并持续复盘，不承担管理/BP/体系搭建职责。",
@@ -207,7 +220,12 @@ def _build_task_brief(
     else:
         risk_parts.append("即使责任清晰，若目标口径和验收标准不具体，也会造成新人与团队反复返工。")
 
-    if role_definition_problem:
+    if owner_clear_capability_gap:
+        problem_to_solve = "本次招聘只解决能力补位问题：补齐市场打开、合作达成与订单获取所需能力。"
+        core_goal_text = "3个月内在目标市场形成清晰进入路径，拿到首批有效合作与订单结果。"
+        owner_scope = "对市场打开、关键合作达成、订单获取结果负责。"
+        risk_warning = "负责人虽明确，但若继续由能力尚未匹配的人内部摸索，突破周期会明显拉长。"
+    elif role_definition_problem:
         problem_to_solve = "本次招聘只解决一个核心问题：补齐当前最关键结果的直接交付能力。"
         core_goal_text = "3个月内让单一核心结果显著改善（如有效线索、签约转化或渠道产出）。"
         owner_scope = "仅对当前最关键结果负责，不包含管理、BP或体系建设职责。"
@@ -253,10 +271,22 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
         problem, root_answer, owner_answer
     )
     team_stage, team_reason = _team_context(team_size)
+    owner_clear_capability_gap = (
+        any(token in owner_answer.lower() for token in ["我是负责人", "有人负责", "负责人明确", "owner明确", "现在就是我"])
+        and any(
+            token in root_answer.lower()
+            for token in ["不会做", "做不来", "力不从心", "在摸索", "不懂行业", "缺经验", "能力不足"]
+        )
+    )
 
     if industry_gap and not capability_problem:
         capability_problem = True
         capability_reason = "能力信号补充：出现行业能力断层，按能力缺口处理。"
+    if owner_clear_capability_gap:
+        responsibility_problem = False
+        capability_problem = True
+        responsibility_reason = "责任归属明确：已有负责人。"
+        capability_reason = "负责人明确但能力不足，按能力缺口优先处理。"
 
     if stage_problem:
         needs_hiring = False
@@ -300,7 +330,22 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
         final_suggestion = "先确定唯一结果负责人和考核口径，再决定是否招聘。"
     elif capability_problem and not responsibility_problem:
         needs_hiring = True
-        if industry_gap:
+        if owner_clear_capability_gap:
+            judgment = "现在这个结果是有人负责的，但负责人本身不具备把这件事做出来的能力，所以问题不在责任归属，而在能力缺口。与其继续内部摸索，更合理的是补进能够直接打开局面的人。"
+            recruitable_parts = [
+                "补进具备相关能力或行业经验的人，能直接提升市场打开与合作转化效率。",
+                "由具备路径认知的人接手关键环节，可显著缩短试错周期。",
+            ]
+            non_recruitable_parts = [
+                "责任归属已明确，不需要再通过组织重划分来解决当前卡点。"
+            ]
+            talent_profile = [
+                f"负责的结果：围绕“{goal or '关键业务结果'}”推动市场打开并达成可验证合作与订单。",
+                "核心能力：具备行业经验、路径认知与资源突破能力。",
+                "成功标准：90天内形成稳定推进节奏并交付阶段性业务突破。",
+            ]
+            final_suggestion = "建议引入具备相关能力或行业经验的人才，补齐能力缺口。"
+        elif industry_gap:
             judgment = "当前问题优先不是责任问题，而是行业能力缺口，建议引入行业型人才。"
             recruitable_parts = [
                 "补齐行业 knowhow、决策路径认知与关键资源理解，可直接缩短进入周期。",
@@ -366,6 +411,7 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
             capability_problem=capability_problem,
             industry_gap=industry_gap,
             role_definition_problem=role_definition_problem,
+            owner_clear_capability_gap=owner_clear_capability_gap,
             recruitable_parts=recruitable_parts,
             non_recruitable_parts=non_recruitable_parts,
         )
