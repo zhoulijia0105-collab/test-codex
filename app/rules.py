@@ -43,7 +43,10 @@ def _responsibility_status(owner_answer: str, root_answer: str) -> Tuple[bool, s
 
     has_owner_signal = (
         "有" in owner_text and "负责" in owner_text and "没" not in owner_text and "不" not in owner_text
-    ) or any(token in merged for token in ["明确负责人", "负责人明确", "责任明确", "有人盯结果", "owner明确"])
+    ) or any(
+        token in merged
+        for token in ["明确负责人", "负责人明确", "责任明确", "有人盯结果", "owner明确", "我是负责人", "我负责", "有负责人"]
+    )
 
     no_owner_signal = any(
         token in merged
@@ -51,7 +54,7 @@ def _responsibility_status(owner_answer: str, root_answer: str) -> Tuple[bool, s
     )
     capability_weak_signal = any(
         token in root_text
-        for token in ["不会做", "做不来", "力不从心", "在摸索", "不懂行业", "缺经验", "能力不足"]
+        for token in ["不会做", "做不来", "力不从心", "在摸索", "不懂行业", "缺经验", "能力不足", "需要找人", "需要合力"]
     )
 
     if no_owner_signal and not has_owner_signal:
@@ -271,11 +274,16 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
         problem, root_answer, owner_answer
     )
     team_stage, team_reason = _team_context(team_size)
+    owner_merged = f"{owner_answer} {problem}".lower()
+    root_merged = f"{root_answer} {problem}".lower()
     owner_clear_capability_gap = (
-        any(token in owner_answer.lower() for token in ["我是负责人", "有人负责", "负责人明确", "owner明确", "现在就是我"])
+        any(
+            token in owner_merged
+            for token in ["我是负责人", "我负责", "有负责人", "负责人明确", "owner明确", "现在就是我"]
+        )
         and any(
-            token in root_answer.lower()
-            for token in ["不会做", "做不来", "力不从心", "在摸索", "不懂行业", "缺经验", "能力不足"]
+            token in root_merged
+            for token in ["不会做", "能力不足", "力不从心", "在摸索", "缺经验", "需要找人", "需要合力", "做不来"]
         )
     )
 
@@ -288,7 +296,23 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
         responsibility_reason = "责任归属明确：已有负责人。"
         capability_reason = "负责人明确但能力不足，按能力缺口优先处理。"
 
-    if stage_problem:
+    if owner_clear_capability_gap:
+        needs_hiring = True
+        judgment = "当前结果是有人负责的，但负责人不具备把这件事做出来的能力，因此问题不在责任，而在能力缺口，应优先通过引入具备相关能力的人来解决。"
+        recruitable_parts = [
+            "引入具备相关经验的人选，直接补齐当前负责人做不出的关键能力。",
+            "通过能力补位加速市场打开与合作转化，不再长期依赖低效摸索。",
+        ]
+        non_recruitable_parts = [
+            "责任归属已经明确，当前卡点不在责任划分。"
+        ]
+        talent_profile = [
+            f"负责的结果：围绕“{goal or '关键业务结果'}”完成市场打开、合作达成与订单获取。",
+            "核心能力：具备该领域经验、路径认知与资源突破能力。",
+            "成功标准：90天内形成可验证的结果改善与稳定推进节奏。",
+        ]
+        final_suggestion = "优先引入具备该领域经验或市场打开能力的人，而不是继续依赖当前负责人单独摸索。"
+    elif stage_problem:
         needs_hiring = False
         judgment = "当前问题不在于缺人，而在于尚未打通行业进入路径。"
         recruitable_parts = [
@@ -330,22 +354,7 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
         final_suggestion = "先确定唯一结果负责人和考核口径，再决定是否招聘。"
     elif capability_problem and not responsibility_problem:
         needs_hiring = True
-        if owner_clear_capability_gap:
-            judgment = "现在这个结果是有人负责的，但负责人本身不具备把这件事做出来的能力，所以问题不在责任归属，而在能力缺口。与其继续内部摸索，更合理的是补进能够直接打开局面的人。"
-            recruitable_parts = [
-                "补进具备相关能力或行业经验的人，能直接提升市场打开与合作转化效率。",
-                "由具备路径认知的人接手关键环节，可显著缩短试错周期。",
-            ]
-            non_recruitable_parts = [
-                "责任归属已明确，不需要再通过组织重划分来解决当前卡点。"
-            ]
-            talent_profile = [
-                f"负责的结果：围绕“{goal or '关键业务结果'}”推动市场打开并达成可验证合作与订单。",
-                "核心能力：具备行业经验、路径认知与资源突破能力。",
-                "成功标准：90天内形成稳定推进节奏并交付阶段性业务突破。",
-            ]
-            final_suggestion = "建议引入具备相关能力或行业经验的人才，补齐能力缺口。"
-        elif industry_gap:
+        if industry_gap:
             judgment = "当前问题优先不是责任问题，而是行业能力缺口，建议引入行业型人才。"
             recruitable_parts = [
                 "补齐行业 knowhow、决策路径认知与关键资源理解，可直接缩短进入周期。",
