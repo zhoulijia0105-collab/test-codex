@@ -171,6 +171,24 @@ def _role_definition_problem_status(problem: str, root_answer: str, owner_answer
     return False, "未识别到明显的岗位定义过载信号。"
 
 
+def _recruiting_capability_gap_status(problem: str, root_answer: str, owner_answer: str) -> Tuple[bool, str]:
+    merged = f"{problem or ''} {root_answer or ''} {owner_answer or ''}".lower()
+    recruiting_gap_signal = any(
+        token in merged
+        for token in [
+            "全员招聘",
+            "没有招聘官",
+            "招聘力量不足",
+            "缺人干活",
+            "招不到人",
+            "业务在增长但人跟不上",
+        ]
+    )
+    if recruiting_gap_signal:
+        return True, "识别到招聘能力缺口：缺少专业招聘能力导致供给不足与招聘效率低。"
+    return False, "未识别到明确的招聘能力缺口信号。"
+
+
 def _build_task_brief(
     *,
     problem: str,
@@ -180,13 +198,20 @@ def _build_task_brief(
     industry_gap: bool,
     role_definition_problem: bool,
     owner_clear_capability_gap: bool,
+    recruiting_capability_gap: bool,
     recruitable_parts: List[str],
     non_recruitable_parts: List[str],
 ) -> Dict[str, object]:
     core_problem = problem or "当前关键结果无人稳定达成"
     core_goal = goal or "90天内把关键结果拉到可复盘、可持续的稳定状态"
 
-    if owner_clear_capability_gap:
+    if recruiting_capability_gap:
+        key_capabilities = [
+            "具备快速获取候选人的能力，能持续建立和拓展有效人才池。",
+            "能够搭建并运营多元招聘渠道，提升目标岗位触达效率。",
+            "具备流程优化与转化推进能力，持续提升邀约到入职的转化率。",
+        ]
+    elif owner_clear_capability_gap:
         key_capabilities = [
             "在目标市场具备实战开拓经验，能快速识别并推进关键合作机会。",
             "熟悉行业决策链路与成交路径，能把机会转化为可落地订单。",
@@ -223,7 +248,12 @@ def _build_task_brief(
     else:
         risk_parts.append("即使责任清晰，若目标口径和验收标准不具体，也会造成新人与团队反复返工。")
 
-    if owner_clear_capability_gap:
+    if recruiting_capability_gap:
+        problem_to_solve = "本次招聘只解决招聘能力缺口：快速获取候选人、建立渠道并提升招聘转化率。"
+        core_goal_text = "3个月内建立稳定候选人供给，显著提升招聘效率与关键岗位入职转化。"
+        owner_scope = "对候选人获取效率、渠道建设效果和招聘转化率结果负责。"
+        risk_warning = "若继续依赖全员分散招聘，关键岗位补位速度会持续滞后于业务增长。"
+    elif owner_clear_capability_gap:
         problem_to_solve = "本次招聘只解决能力补位问题：补齐市场打开、合作达成与订单获取所需能力。"
         core_goal_text = "3个月内在目标市场形成清晰进入路径，拿到首批有效合作与订单结果。"
         owner_scope = "对市场打开、关键合作达成、订单获取结果负责。"
@@ -273,6 +303,9 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
     role_definition_problem, role_definition_reason = _role_definition_problem_status(
         problem, root_answer, owner_answer
     )
+    recruiting_capability_gap, recruiting_capability_reason = _recruiting_capability_gap_status(
+        problem, root_answer, owner_answer
+    )
     team_stage, team_reason = _team_context(team_size)
     owner_merged = f"{owner_answer} {problem}".lower()
     root_merged = f"{root_answer} {problem}".lower()
@@ -295,6 +328,10 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
         capability_problem = True
         responsibility_reason = "责任归属明确：已有负责人。"
         capability_reason = "负责人明确但能力不足，按能力缺口优先处理。"
+    if recruiting_capability_gap:
+        responsibility_problem = False
+        capability_problem = True
+        capability_reason = "识别到招聘能力缺口，按能力问题优先处理。"
 
     if owner_clear_capability_gap:
         needs_hiring = True
@@ -312,6 +349,22 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
             "成功标准：90天内形成可验证的结果改善与稳定推进节奏。",
         ]
         final_suggestion = "优先引入具备该领域经验或市场打开能力的人，而不是继续依赖当前负责人单独摸索。"
+    elif recruiting_capability_gap:
+        needs_hiring = True
+        judgment = "当前问题不是责任未闭环，而是缺乏专业招聘能力，导致招聘效率不足，应优先补充具备招聘能力的人。"
+        recruitable_parts = [
+            "补充专业招聘能力可直接提升候选人获取速度和质量。",
+            "建立稳定招聘渠道后，关键岗位补位速度可与业务增长节奏匹配。",
+        ]
+        non_recruitable_parts = [
+            "当前核心不是责任划分，而是招聘能力和方法论不足。"
+        ]
+        talent_profile = [
+            f"负责的结果：围绕“{goal or '关键岗位补位结果'}”提升候选人供给、渠道效率和入职转化。",
+            "核心能力：快速获客（候选人）、渠道搭建与招聘转化提升能力。",
+            "成功标准：90天内关键岗位招聘周期明显缩短，入职转化率显著提升。",
+        ]
+        final_suggestion = "优先补进具备招聘实战能力的人，先解决候选人获取和转化效率问题。"
     elif stage_problem:
         needs_hiring = False
         judgment = "当前问题不在于缺人，而在于尚未打通行业进入路径。"
@@ -408,7 +461,7 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
 
     non_recruitable_parts.append(f"组织阶段提醒：{team_reason}")
     non_recruitable_parts.append(
-        f"推理依据：{stage_reason}；{role_definition_reason}；{industry_reason}；{responsibility_reason}；{capability_reason}"
+        f"推理依据：{stage_reason}；{role_definition_reason}；{industry_reason}；{recruiting_capability_reason}；{responsibility_reason}；{capability_reason}"
     )
 
     task_brief = None
@@ -421,6 +474,7 @@ def make_decision(user_input: Dict[str, str]) -> Dict[str, object]:
             industry_gap=industry_gap,
             role_definition_problem=role_definition_problem,
             owner_clear_capability_gap=owner_clear_capability_gap,
+            recruiting_capability_gap=recruiting_capability_gap,
             recruitable_parts=recruitable_parts,
             non_recruitable_parts=non_recruitable_parts,
         )
