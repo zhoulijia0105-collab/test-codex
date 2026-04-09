@@ -3,152 +3,187 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>招聘决策诊断</title>
+    <title>招聘决策对话工具（MVP）</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
     <main class="page">
       <section class="card">
-        <h1>招聘决策诊断（MVP）</h1>
+        <h1>招聘决策对话工具（MVP）</h1>
+        <p class="subtitle">像资深顾问一样，先判断问题本质，再决定要不要通过招聘解决。</p>
 
-        <div class="section" id="baseSection">
-          <h2>1. 基本信息输入</h2>
-          <label>公司阶段</label>
-          <input id="companyStage" type="text" placeholder="例如：A轮后快速增长期" />
+        <div class="section" id="inputSection">
+          <h2>第1步：描述你的问题</h2>
 
-          <label>团队规模</label>
-          <input id="teamSize" type="text" placeholder="例如：28人" />
+          <label>公司阶段（可选）</label>
+          <input id="companyStage" type="text" placeholder="例如：业务扩张期" />
 
-          <label>当前最想解决的问题</label>
-          <textarea id="currentProblem" rows="4"></textarea>
+          <label>团队规模（可选）</label>
+          <input id="teamSize" type="text" placeholder="例如：35人" />
 
-          <label>为什么觉得需要招人</label>
-          <textarea id="hiringReason" rows="4"></textarea>
+          <label>你当前最想解决的问题</label>
+          <textarea id="currentProblem" rows="4" placeholder="例如：销售线索很多，但转化率持续低，团队互相抱怨执行慢"></textarea>
 
-          <button id="startBtn">开始诊断</button>
+          <button id="startBtn">开始顾问式诊断</button>
         </div>
 
-        <div class="section hidden" id="followupSection">
-          <h2>2. 系统追问</h2>
-          <label id="q1Label"></label>
-          <input id="q1Input" type="text" />
+        <div class="section hidden" id="dialogSection">
+          <h2>第2步：三轮递进式提问</h2>
+          <div class="bubble" id="restatement"></div>
 
-          <label id="q2Label"></label>
-          <input id="q2Input" type="text" />
+          <div class="qa-box">
+            <p class="question" id="currentQuestion"></p>
+            <input id="answerInput" type="text" placeholder="请输入你的回答" />
+            <button id="nextBtn">提交本轮回答</button>
+          </div>
 
-          <label id="q3Label"></label>
-          <input id="q3Input" type="text" />
-
-          <button id="diagnoseBtn">生成诊断结果</button>
+          <div id="history"></div>
         </div>
 
         <div class="section hidden" id="resultSection">
-          <h2>3. 诊断结果</h2>
+          <h2>第3步：诊断结论</h2>
 
           <div class="result-block">
-            <h3>问题本质</h3>
-            <p id="problemEssence"></p>
+            <h3>判断句（有立场）</h3>
+            <p id="judgment"></p>
           </div>
 
           <div class="result-block">
-            <h3>你当前看起来像“缺人”的原因</h3>
-            <p id="whyFeelsLikeHiring"></p>
+            <h3>可通过招聘解决的部分</h3>
+            <ul id="recruitableParts"></ul>
           </div>
 
           <div class="result-block">
-            <h3>可选解决路径</h3>
-            <div class="path-item">
-              <h4>1. 招聘</h4>
-              <p><strong>适用条件：</strong><span id="path1Condition"></span></p>
-              <p><strong>风险提示：</strong><span id="path1Risk"></span></p>
-            </div>
-            <div class="path-item">
-              <h4>2. 内部调整</h4>
-              <p><strong>适用条件：</strong><span id="path2Condition"></span></p>
-              <p><strong>风险提示：</strong><span id="path2Risk"></span></p>
-            </div>
-            <div class="path-item">
-              <h4>3. 外包/临时方案</h4>
-              <p><strong>适用条件：</strong><span id="path3Condition"></span></p>
-              <p><strong>风险提示：</strong><span id="path3Risk"></span></p>
-            </div>
+            <h3>不能通过招聘解决的部分</h3>
+            <ul id="nonRecruitableParts"></ul>
+          </div>
+
+          <div class="result-block hidden" id="talentProfileBlock">
+            <h3>人才画像（仅在确实需要招聘时给出）</h3>
+            <ul id="talentProfile"></ul>
           </div>
 
           <div class="result-block">
-            <h3>建议优先动作</h3>
-            <p id="priorityAction"></p>
+            <h3>唯一建议</h3>
+            <p id="finalSuggestion"></p>
           </div>
         </div>
       </section>
     </main>
 
     <script>
-      const startBtn = document.getElementById("startBtn");
-      const diagnoseBtn = document.getElementById("diagnoseBtn");
-
-      const followupSection = document.getElementById("followupSection");
-      const resultSection = document.getElementById("resultSection");
+      const questions = [
+        "Q1：这件事如果做好，最终要的结果是什么？",
+        "Q2：现在有没有人对这个结果负责？",
+        "Q3：是没人会做，还是没人负责？",
+      ];
 
       const state = {
-        questions: [],
+        step: 0,
+        answers: ["", "", ""],
       };
+
+      const startBtn = document.getElementById("startBtn");
+      const nextBtn = document.getElementById("nextBtn");
+
+      const inputSection = document.getElementById("inputSection");
+      const dialogSection = document.getElementById("dialogSection");
+      const resultSection = document.getElementById("resultSection");
+
+      function appendHistory(question, answer) {
+        const container = document.getElementById("history");
+        const item = document.createElement("div");
+        item.className = "history-item";
+        item.innerHTML = `<p><strong>${question}</strong></p><p>${answer}</p>`;
+        container.appendChild(item);
+      }
+
+      function renderList(elId, items) {
+        const el = document.getElementById(elId);
+        el.innerHTML = "";
+        items.forEach((item) => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          el.appendChild(li);
+        });
+      }
 
       startBtn.addEventListener("click", async () => {
         const payload = {
           company_stage: document.getElementById("companyStage").value.trim(),
           team_size: document.getElementById("teamSize").value.trim(),
           current_problem: document.getElementById("currentProblem").value.trim(),
-          hiring_reason: document.getElementById("hiringReason").value.trim(),
         };
 
-        const response = await fetch("/api/start", {
+        if (!payload.current_problem) {
+          alert("请先输入你当前最想解决的问题。");
+          return;
+        }
+
+        const res = await fetch("/api/restate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        const data = await res.json();
 
-        const data = await response.json();
-        state.questions = data.questions || [];
+        document.getElementById("restatement").textContent = data.restatement || "";
+        document.getElementById("currentQuestion").textContent = data.next_question || questions[0];
 
-        document.getElementById("q1Label").textContent = state.questions[0] || "问题1";
-        document.getElementById("q2Label").textContent = state.questions[1] || "问题2";
-        document.getElementById("q3Label").textContent = state.questions[2] || "问题3";
-
-        followupSection.classList.remove("hidden");
-        resultSection.classList.add("hidden");
+        inputSection.classList.add("hidden");
+        dialogSection.classList.remove("hidden");
       });
 
-      diagnoseBtn.addEventListener("click", async () => {
+      nextBtn.addEventListener("click", async () => {
+        const answer = document.getElementById("answerInput").value.trim();
+        if (!answer) {
+          alert("请先回答当前问题。");
+          return;
+        }
+
+        appendHistory(questions[state.step], answer);
+        state.answers[state.step] = answer;
+        state.step += 1;
+        document.getElementById("answerInput").value = "";
+
+        if (state.step < 3) {
+          document.getElementById("currentQuestion").textContent = questions[state.step];
+          return;
+        }
+
         const payload = {
           company_stage: document.getElementById("companyStage").value.trim(),
           team_size: document.getElementById("teamSize").value.trim(),
           current_problem: document.getElementById("currentProblem").value.trim(),
-          hiring_reason: document.getElementById("hiringReason").value.trim(),
-          q1_owner: document.getElementById("q1Input").value.trim(),
-          q2_timeline: document.getElementById("q2Input").value.trim(),
-          q3_alternative: document.getElementById("q3Input").value.trim(),
+          q1_goal: state.answers[0],
+          q2_owner: state.answers[1],
+          q3_root: state.answers[2],
         };
 
-        const response = await fetch("/api/diagnose", {
+        const res = await fetch("/api/decide", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        const data = await res.json();
 
-        const data = await response.json();
+        document.getElementById("judgment").textContent = data.judgment || "";
+        document.getElementById("finalSuggestion").textContent = data.final_suggestion || "";
 
-        document.getElementById("problemEssence").textContent = data.problem_essence || "";
-        document.getElementById("whyFeelsLikeHiring").textContent = data.why_feels_like_hiring || "";
-        document.getElementById("priorityAction").textContent = data.priority_action || "";
+        renderList("recruitableParts", data.recruitable_parts || []);
+        renderList("nonRecruitableParts", data.non_recruitable_parts || []);
 
-        const paths = data.paths || [];
-        document.getElementById("path1Condition").textContent = paths[0]?.condition || "";
-        document.getElementById("path1Risk").textContent = paths[0]?.risk || "";
-        document.getElementById("path2Condition").textContent = paths[1]?.condition || "";
-        document.getElementById("path2Risk").textContent = paths[1]?.risk || "";
-        document.getElementById("path3Condition").textContent = paths[2]?.condition || "";
-        document.getElementById("path3Risk").textContent = paths[2]?.risk || "";
+        const talentProfileBlock = document.getElementById("talentProfileBlock");
+        if (data.needs_hiring) {
+          talentProfileBlock.classList.remove("hidden");
+          renderList("talentProfile", data.talent_profile || []);
+        } else {
+          talentProfileBlock.classList.add("hidden");
+        }
 
+        document.getElementById("currentQuestion").textContent = "三轮问题已完成。";
+        document.getElementById("answerInput").classList.add("hidden");
+        nextBtn.classList.add("hidden");
         resultSection.classList.remove("hidden");
       });
     </script>
