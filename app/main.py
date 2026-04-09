@@ -1,13 +1,13 @@
 from flask import Flask, jsonify, render_template, request
 
-from rules import diagnose
+from rules import build_restatement, make_decision
 
 app = Flask(__name__)
 
-FOLLOW_UP_QUESTIONS = [
-    "这个问题目前是否有明确负责人？",
-    "这个岗位要解决的是长期问题还是短期问题？",
-    "如果不招人，有没有内部调整或外包的可能？",
+QUESTIONS = [
+    "Q1：这件事如果做好，最终要的结果是什么？",
+    "Q2：现在有没有人对这个结果负责？",
+    "Q3：是没人会做，还是没人负责？",
 ]
 
 
@@ -16,25 +16,21 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/api/start", methods=["POST"])
-def api_start():
+@app.route("/api/restate", methods=["POST"])
+def api_restate():
     payload = request.get_json(silent=True) or {}
     return jsonify(
         {
-            "message": "已进入诊断追问阶段。",
-            "questions": FOLLOW_UP_QUESTIONS,
-            "context": {
-                "company_stage": payload.get("company_stage", ""),
-                "team_size": payload.get("team_size", ""),
-            },
+            "restatement": build_restatement(payload),
+            "next_question": QUESTIONS[0],
         }
     )
 
 
-@app.route("/api/diagnose", methods=["POST"])
-def api_diagnose():
+@app.route("/api/decide", methods=["POST"])
+def api_decide():
     payload = request.get_json(silent=True) or {}
-    return jsonify(diagnose(payload))
+    return jsonify(make_decision(payload))
 
 
 if __name__ == "__main__":
