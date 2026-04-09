@@ -43,7 +43,7 @@ def _responsibility_status(owner_answer: str, root_answer: str) -> Tuple[bool, s
 
     has_owner_signal = (
         "有" in owner_text and "负责" in owner_text and "没" not in owner_text and "不" not in owner_text
-    ) or any(token in merged for token in ["明确负责人", "责任明确", "有人盯结果", "owner明确"])
+    ) or any(token in merged for token in ["明确负责人", "负责人明确", "责任明确", "有人盯结果", "owner明确"])
 
     no_owner_signal = any(
         token in merged
